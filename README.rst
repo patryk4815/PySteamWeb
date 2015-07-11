@@ -8,9 +8,9 @@ Usage
 
 .. code-block:: python
 
-    >>> import steam
+    >>> from steam import SteamWebBase
     >>> 
-    >>> steam = steam.SteamWebBase()
+    >>> steam = SteamWebBase()
     >>> if steam.login(username='steam_login', password='steam_password'):
     >>>     print(steam.send_session(url='http://steamcommunity.com/profiles/{}/edit'.format(steam.steam_id64), is_post=False))
     '....return html string of this url...'
