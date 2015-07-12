@@ -1,14 +1,7 @@
 try:
     from setuptools import setup
-    extra = {
-        'install_requires': [
-            'pycrypto>=2.6,<3.0',
-            'requests>=2.5,<3.0',
-        ]
-    }
 except ImportError:
     from distutils.core import setup
-    extra = {}
 
 setup(
     name='PySteamWeb',
@@ -21,5 +14,8 @@ setup(
     description='python3 steam web login',
     keywords=['python3', 'steam', 'login', 'api'],
     platforms='Posix; MacOS X; Windows',
-    **extra
+    install_requires=[
+        'pycrypto>=2.6,<3.0',
+        'requests>=2.5,<3.0',
+    ]
 )
