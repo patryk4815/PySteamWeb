@@ -15,7 +15,7 @@ setup(
     keywords=['python3', 'steam', 'login', 'api'],
     platforms='Posix; MacOS X; Windows',
     install_requires=[
-        'pycrypto>=2.6,<3.0',
-        'requests>=2.5,<3.0',
+        'pycrypto >=2.6',
+        'requests >=2.5',
     ]
 )
