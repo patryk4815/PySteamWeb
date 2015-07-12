@@ -2,6 +2,7 @@ Requirements
 ============
 
 * Python 3.4+ (or maybe python 3.3 [not tested])
+* `pip3 install -r requirements.txt`
 
 Usage
 =====
