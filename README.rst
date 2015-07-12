@@ -2,14 +2,20 @@ Requirements
 ============
 
 * Python 3.4+ (or maybe python 3.3 [not tested])
-* `pip3 install -r requirements.txt`
+* pyCrypto
+* requests
+
+Instalation
+===========
+
+* pip3 install pysteamweb
 
 Usage
 =====
 
 .. code-block:: python
 
-    >>> from steam import SteamWebBase
+    >>> from pysteamweb import SteamWebBase
     >>> 
     >>> steam = SteamWebBase()
     >>> if steam.login(username='steam_login', password='steam_password'):
