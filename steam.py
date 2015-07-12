@@ -7,8 +7,8 @@ import os
 import re
 
 import logging
-
 # logging.basicConfig(level=logging.INFO)
+
 
 class SteamWebBase(object):
     @staticmethod
@@ -27,7 +27,8 @@ class SteamWebBase(object):
     def _init_session(self):
         session = requests.Session()
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2453.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/45.0.2453.0 Safari/537.36'
         })
         return session
 
@@ -37,7 +38,7 @@ class SteamWebBase(object):
     def session_get_cookies(self):
         return dict(self.session.cookies)
 
-    def send_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120):
+    def _request(self, module, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120):
         if data is None:
             data = {}
 
@@ -48,34 +49,20 @@ class SteamWebBase(object):
             headers['X-Requested-With'] = 'XMLHttpRequest'
 
         if is_post:
-            response = requests.post(url, data=data, timeout=timeout, headers=headers)
+            response = module.post(url, data=data, timeout=timeout, headers=headers)
         else:
-            response = requests.get(url, params=data, timeout=timeout, headers=headers)
+            response = module.get(url, params=data, timeout=timeout, headers=headers)
 
         if is_json:
             return response.json()
         else:
             return response.text
+
+    def send_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120):
+        return self._request(requests, url, data, is_post, is_json, is_ajax, referer, timeout)
 
     def send_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120):
-        if data is None:
-            data = {}
-
-        headers = {}
-        if referer is not None:
-            headers['Referer'] = referer
-        if is_ajax:
-            headers['X-Requested-With'] = 'XMLHttpRequest'
-
-        if is_post:
-            response = self.session.post(url, data=data, timeout=timeout, headers=headers)
-        else:
-            response = self.session.get(url, params=data, timeout=timeout, headers=headers)
-
-        if is_json:
-            return response.json()
-        else:
-            return response.text
+        return self._request(self.session, url, data, is_post, is_json, is_ajax, referer, timeout)
 
     def _check_is_login(self):
         chat_html = self.send_session(
@@ -91,8 +78,9 @@ class SteamWebBase(object):
             self.steam_id64 = int(re.search(r'g_steamID = "(.*?)";', chat_html).group(1))
 
             self.access_token = re.search(r'WebAPI = new CWebAPI\( \'.*?\', \'.*?\', "(.*?)" \);', chat_html).group(1)
+            self.friends_list = json.loads(re.search(r'Chat = new CWebChat\( WebAPI, {[^}]*?},'
+                                                     r' (\[.*\]), \[.*\] \);', chat_html).group(1))
 
-            self.friends_list = json.loads(re.search(r'Chat = new CWebChat\( WebAPI, {[^}]*?}, (\[.*\]), \[.*\] \);', chat_html).group(1))
             self.friends_list = {int(key['m_ulSteamID']): key for key in self.friends_list}
         except AttributeError:
             return False
@@ -204,7 +192,9 @@ class SteamWebBase(object):
 
             elif login_data.get('captcha_needed', False):
                 kwargs['captchagid'] = login_data['captcha_gid']
-                kwargs['captcha_text'] = input('Podaj kod z obrazka https://store.steampowered.com/public/captcha.php?gid={} : '.format(login_data['captcha_gid']))
+                kwargs['captcha_text'] = input('Podaj kod z obrazka '
+                                               'https://store.steampowered.com/public/captcha.php'
+                                               '?gid={} : '.format(login_data['captcha_gid']))
 
                 return self.login(**kwargs)
 
