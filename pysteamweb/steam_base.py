@@ -1,13 +1,12 @@
-from Crypto.Cipher import PKCS1_v1_5
-from Crypto.PublicKey import RSA
-from base64 import b64encode
-import requests
 import json
 import os
 import re
-
 import logging
-# logging.basicConfig(level=logging.INFO)
+from base64 import b64encode
+
+import requests
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
 
 
 class SteamWebBase(object):
@@ -21,8 +20,9 @@ class SteamWebBase(object):
         cipher = PKCS1_v1_5.new(rsa_obj)
         return b64encode(cipher.encrypt(password.encode('utf-8')))
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.session = self._init_session()
+        self._login(username=kwargs.get('username'), password=kwargs.get('password'))
 
     def _init_session(self):
         session = requests.Session()
@@ -135,7 +135,7 @@ class SteamWebBase(object):
 
         self._write_config_data(username, json.dumps(data_return))
 
-    def login(self, **kwargs):
+    def _login(self, **kwargs):
         query_data = {
             'username': '',
             'password': '',
@@ -184,19 +184,16 @@ class SteamWebBase(object):
 
         if not login_data.get('success', False):
             if login_data.get('emailauth_needed', False):
-                kwargs['emailauth'] = input('Podaj haslo quardian z emaila: ')
-                # kwargs['loginfriendlyname'] = input('Podaj nazwe urzadzenia: ')
                 kwargs['emailsteamid'] = login_data['emailsteamid']
+                # kwargs['loginfriendlyname'] = input('Enter device name: ')
 
-                return self.login(**kwargs)
+                kwargs = self.on_need_guardian(kwargs, login_data)
+                return self._login(**kwargs)
 
             elif login_data.get('captcha_needed', False):
                 kwargs['captchagid'] = login_data['captcha_gid']
-                kwargs['captcha_text'] = input('Podaj kod z obrazka '
-                                               'https://store.steampowered.com/public/captcha.php'
-                                               '?gid={} : '.format(login_data['captcha_gid']))
-
-                return self.login(**kwargs)
+                kwargs = self.on_need_captcha(kwargs, login_data)
+                return self._login(**kwargs)
 
             return False
 
@@ -208,3 +205,23 @@ class SteamWebBase(object):
             return True
 
         return False
+
+    def on_need_guardian(self, kwargs, login_data):
+        kwargs['emailauth'] = input('Enter guardian code: ')
+        return kwargs
+
+    def on_need_captcha(self, kwargs, login_data):
+        kwargs['captcha_text'] = input(
+            'Enter captcha from url '
+            'https://store.steampowered.com/public/captcha.php?gid={} : '.format(login_data['captcha_gid'])
+        )
+        return kwargs
+
+    def logout(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.logout()

@@ -16,8 +16,7 @@ Usage
 .. code-block:: python
 
     >>> from pysteamweb import SteamWebBase
-    >>> 
-    >>> steam = SteamWebBase()
-    >>> if steam.login(username='steam_login', password='steam_password'):
+    >>>
+    >>> with SteamWebBase(username='steam_login', password='steam_password') as steam:
     >>>     print(steam.send_session(url='http://steamcommunity.com/profiles/{}/edit'.format(steam.steam_id64), is_post=False))
     '....return html string of this url...'
