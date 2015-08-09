@@ -5,7 +5,7 @@ except ImportError:
 
 setup(
     name='PySteamWeb',
-    version='0.1',
+    version='0.2',
     packages=['pysteamweb'],
     url='https://github.com/patryk4815/PySteamWeb',
     license='MIT',
