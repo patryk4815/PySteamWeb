@@ -25,4 +25,4 @@ Usage
 Demos
 =====
 
-- `Automatic get guardian code from mailbox <https://github.com/patryk4815/PySteamWeb/demo/guardian_code_and_pop3.py>`__
+- `Automatic get guardian code from mailbox <https://github.com/patryk4815/PySteamWeb/blob/master/demo/guardian_code_and_pop3.py>`__
