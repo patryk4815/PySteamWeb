@@ -20,3 +20,9 @@ Usage
     >>> with SteamWebBase(username='steam_login', password='steam_password') as steam:
     >>>     print(steam.send_session(url='http://steamcommunity.com/profiles/{}/edit'.format(steam.steam_id64), is_post=False))
     '....return html string of this url...'
+
+
+Demos
+=====
+
+- `Automatic get guardian code from mailbox <https://github.com/patryk4815/PySteamWeb/demo/guardian_code_and_pop3.py>`__
