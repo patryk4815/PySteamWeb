@@ -4,8 +4,8 @@ import requests
 
 class SteamIdParser(object):
     def __init__(self, sid):
-        self.sid64 = self._to_64(sid)
         self.sid_base = 76561197960265728
+        self.sid64 = self._to_64(sid)
 
     def _get_type(self, string):
         sid_type = 0
