@@ -22,7 +22,8 @@ class SteamWebBase(object):
 
     def __init__(self, **kwargs):
         self.session = self._init_session()
-        self._login(username=kwargs.get('username'), password=kwargs.get('password'))
+        if not self._login(username=kwargs.get('username'), password=kwargs.get('password')):
+            raise ConnectionAbortedError('not logged in')
 
     def _init_session(self):
         session = requests.Session()
@@ -195,6 +196,10 @@ class SteamWebBase(object):
                 kwargs = self.on_need_captcha(kwargs, login_data)
                 return self._login(**kwargs)
 
+            elif login_data.get('requires_twofactor', False):
+                kwargs = self.on_need_twofactor(kwargs, login_data)
+                return self._login(**kwargs)
+
             return False
 
         if query_data.get('remember_login'):
@@ -217,6 +222,10 @@ class SteamWebBase(object):
         )
         return kwargs
 
+    def on_need_twofactor(self, kwargs, login_data):
+        kwargs['twofactorcode'] = input('Enter twofactor code: ')
+        return kwargs
+
     def logout(self):
         pass
 
@@ -225,3 +234,4 @@ class SteamWebBase(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.logout()
+
