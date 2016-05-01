@@ -5,10 +5,15 @@ import logging
 from base64 import b64encode
 from binascii import hexlify
 
-import requests
+import asyncio
+import aiohttp
+
+from http.cookies import Morsel
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
 from Crypto import Random
+
+from ._steam_id_parser import SteamIdParser
 
 
 def request_as_mobile(func):
@@ -29,92 +34,63 @@ def request_as_mobile(func):
         del session.cookies['mobileClientVersion']
         del session.cookies['mobileClient']
 
-    def _inner(self, *args, **kwargs):
+    async def _inner(self, *args, **kwargs):
         if not kwargs.get('headers'):
             kwargs['headers'] = mobile_headers.copy()
 
-        _add_cookie(self.session)
-        ret = func(self, *args, **kwargs)
-        _remove_cookie(self.session)
+        _add_cookie(self._session)
+        ret = await func(self, *args, **kwargs)
+        _remove_cookie(self._session)
         return ret
 
     return _inner
 
 
-class SteamWebBase(object):
-    @classmethod
-    def encrypt_password(cls, password, mod, exp):
-        rsa_obj = RSA.construct((
-            int.from_bytes(bytearray.fromhex(mod), byteorder='big'),
-            int.from_bytes(bytearray.fromhex(exp), byteorder='big'),
-        ))
+class SessionBase(object):
+    def __init__(self, loop=None):
+        if loop is None:
+            loop = asyncio.get_event_loop()
 
-        cipher = PKCS1_v1_5.new(rsa_obj)
-        return b64encode(cipher.encrypt(password.encode('utf-8')))
-
-    @classmethod
-    def generate_session_id(cls):
-        return hexlify(Random.get_random_bytes(12)).decode()
-
-    def __init__(self, **kwargs):
-        self._session_id = None
-        self.steam_id64 = None
-        self.access_token = None
-
-        self.session = self._init_session()
-        self.username = kwargs.get('username')
-        self.password = kwargs.get('password')
-
-        init_auth_guardian = kwargs.get('init_cookies')
-        if init_auth_guardian:
-            self.session_set_cookies(init_auth_guardian)
-
-    @property
-    def session_store_id(self):
-        return self.session_id
-
-    @property
-    def session_id(self):
-        if self._session_id:
-            return self._session_id
-
-        cookies = self.session_get_cookies()
-        session = cookies.get('sessionid')
-        if not session:
-            session = self.generate_session_id()
-            self.session_set_cookies({'sessionid': session})
-
-        self._session_id = session
-        return session
-
-    def _init_session(self):
-        session = requests.Session()
-        session.headers.update({
+        self._loop = loop
+        self._session = aiohttp.ClientSession(loop=loop, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
                           'Chrome/45.0.2453.0 Safari/537.36'
         })
-        return session
 
-    def session_set_cookies(self, cookies):
-        self.session.cookies.update(cookies)
+    def close(self):
+        self._session.close()
 
-    def session_clear(self):
-        self.session.cookies.clear()
+    def clear(self):
+        self._session.cookies.clear()
 
-    def session_get_cookies(self, domian='steamcommunity.com'):
+    def set_cookies(self, cookies):
+        self._session.cookies.update(cookies)
+
+    def get_cookies(self, domain='steamcommunity.com'):
         ret = dict()
-        for cookie in self.session.cookies:
-            ret.setdefault(cookie.domain if cookie.domain else None, dict()).setdefault(cookie.name, cookie.value)
-        logging.debug('session_get_cookies ret: {}'.format(ret))
+        for cookie_name, cookie_value in self._session.cookies.items():
+            if isinstance(cookie_value, Morsel):
+                domain = cookie_value.get('domain')
+                value = cookie_value.value
+            else:
+                domain = None
+                value = cookie_value
+
+            ret.setdefault(domain if domain else None, dict()).setdefault(
+                cookie_name,
+                value
+            )
 
         ret2 = dict()
         ret2.update(ret.get(None, dict()))
-        ret2.update(ret.get(domian, dict()))
+        if domain:
+            ret2.update(ret.get(domain, dict()))
 
-        logging.debug('session_get_cookies ret2: {}'.format(ret2))
         return ret2
 
-    def _request(self, module, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+    async def _request(self, module, url, data=None,
+                       is_post=True, is_json=False, is_ajax=False,
+                       referer=None, timeout=120, headers=None):
         if data is None:
             data = {}
 
@@ -126,96 +102,57 @@ class SteamWebBase(object):
         if headers is not None:
             headers_param = headers.copy()
 
-        if is_post:
-            response = module.post(url, data=data, timeout=timeout, headers=headers_param)
-        else:
-            response = module.get(url, params=data, timeout=timeout, headers=headers_param)
-
-        if is_json:
-            ret = response.json()
-        else:
-            ret = response.text
-
+        with aiohttp.Timeout(timeout):
+            if is_post:
+                r = await module.post(url, data=data, headers=headers_param)
+                if is_json:
+                    ret = await r.json()
+                else:
+                    ret = (await r.read()).decode()  # fixme
+                r.close()
+                if self._session != module:  # fixme
+                    module.close()
+            else:
+                r = await module.get(url, params=data, headers=headers_param)
+                if is_json:
+                    ret = await r.json()
+                else:
+                    ret = (await r.read()).decode()  # fixme
+                r.close()
+                if self._session != module:  # fixme
+                    module.close()
         return ret
 
-    def send_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        return self._request(requests, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+    async def send_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        return await self._request(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    def send_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        return self._request(self.session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+    async def send_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        return await self._request(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
     @request_as_mobile
-    def _request_mobile(self, *args, **kwargs):
-        return self._request(*args, **kwargs)
+    async def _request_mobile(self, *args, **kwargs):
+        return await self._request(*args, **kwargs)
 
-    def send_mobile_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        return self._request_mobile(requests, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+    async def send_mobile_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        return await self._request_mobile(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    def send_mobile_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        return self._request_mobile(self.session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+    async def send_mobile_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        return await self._request_mobile(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    def _check_is_login(self):
-        _ = self.session_id  # gen session id
-        chat_html = self.send_session(
-            url='https://steamcommunity.com/chat/',
-            is_post=False
-        )
 
-        if chat_html.find('g_steamID = false;') > -1:  # not login
-            logging.debug('chat_html g_steamID = false')
-            return False
+class ConfigBase(object):
+    def __init__(self, username):
+        self.username = username
 
-        try:
-            self.steam_id64 = int(re.search(r'g_steamID = "(.*?)";', chat_html).group(1))
-
-            self.access_token = re.search(r'WebAPI = new CWebAPI\( \'.*?\', \'.*?\', "(.*?)" \);', chat_html).group(1)
-
-            logging.info('self.session_id = {}'.format(self.session_id))
-            logging.info('self.steam_id64 = {}'.format(self.steam_id64))
-            logging.info('self.access_token = {}'.format(self.access_token))
-        except AttributeError:
-            logging.debug('_check_is_login AttributeError')
-            return False
-
-        return True
-
-    def _check_mobile_is_login(self):
-        _ = self.session_id  # gen session id
-        chat_html = self.send_session(
-            url='http://steamcommunity.com/market/',
-            is_post=False
-        )
-
-        if chat_html.find('g_steamID = false;') > -1:  # not login
-            logging.debug('chat_html g_steamID = false')
-            logging.debug(self.session_get_cookies())
-            return False
-
-        if not self.access_token:
-            logging.debug('self.access_token is None, need re-login!')
-            return False
-
-        try:
-            self.steam_id64 = int(re.search(r'g_steamID = "(.*?)";', chat_html).group(1))
-
-            logging.info('self.session_id = {}'.format(self.session_id))
-            logging.info('self.steam_id64 = {}'.format(self.steam_id64))
-            logging.info('self.access_token = {}'.format(self.access_token))
-        except AttributeError:
-            logging.debug('_check_is_login AttributeError')
-            return False
-
-        return True
-
-    def _read_config_data(self, username):
-        config_path = os.path.join(os.path.expanduser("~"), '.steam_py', username + ".config")
+    def _read_config_data(self, filename):
+        config_path = os.path.join(os.path.expanduser("~"), '.steam_py', filename + ".config")
         if not os.path.exists(config_path):
             return None
 
         return open(config_path, 'rt').read()
 
-    def _write_config_data(self, username, data):
-        config_path = os.path.join(os.path.expanduser("~"), '.steam_py', username + ".config")
+    def _write_config_data(self, filename, data):
+        config_path = os.path.join(os.path.expanduser("~"), '.steam_py', filename + ".config")
         dir_name = os.path.dirname(config_path)
         os.makedirs(dir_name, exist_ok=True)
 
@@ -247,21 +184,123 @@ class SteamWebBase(object):
                 return True
         return False
 
+
+class SteamWebBase(object):
+    @classmethod
+    def encrypt_password(cls, password, mod, exp):
+        rsa_obj = RSA.construct((
+            int.from_bytes(bytearray.fromhex(mod), byteorder='big'),
+            int.from_bytes(bytearray.fromhex(exp), byteorder='big'),
+        ))
+
+        cipher = PKCS1_v1_5.new(rsa_obj)
+        return b64encode(cipher.encrypt(password.encode('utf-8'))).decode()
+
+    @classmethod
+    def generate_session_id(cls):
+        return hexlify(Random.get_random_bytes(12)).decode()
+
+    def __init__(self, *args, **kwargs):
+        loop = kwargs.get('loop')
+        if loop is None:
+            self._loop = asyncio.get_event_loop()
+        else:
+            self._loop = loop
+
+        self._session_id = None
+        self.steam_id = None
+        self.access_token = None
+
+        self.username = kwargs.get('username')
+        self.password = kwargs.get('password')
+        self.session = SessionBase(loop=self._loop)
+        self.config = ConfigBase(self.username)
+
+        # init_auth_guardian = kwargs.get('init_cookies')
+        # if init_auth_guardian:
+        #     self.session.set_cookies(init_auth_guardian)
+
     def read_cookies(self):
-        return self.load_config('cookies', default=dict())
+        return self.config.load_config('cookies', default=dict())
 
     def write_cookie(self):
-        data = self.session_get_cookies()
+        data = self.session.get_cookies()
         data_return = {}
         for key, value in data.items():
-            if self.whitelist_cookie(key):
+            if self.config.whitelist_cookie(key):
                 data_return[key] = value
 
         if not data_return:
             return
-        self.save_config('cookies', data_return)
+        self.config.save_config('cookies', data_return)
 
-    def _login(self, **kwargs):
+    @property
+    def session_id(self):
+        if self._session_id:
+            return self._session_id
+
+        cookies = self.session.get_cookies()
+        session = cookies.get('sessionid')
+        if not session:
+            session = self.generate_session_id()
+            self.session.set_cookies({'sessionid': session})
+
+        self._session_id = session
+        return session
+
+    async def _check_is_login(self):
+        _ = self.session_id  # gen session id
+        chat_html = await self.session.send_session(
+            url='https://steamcommunity.com/chat/',
+            is_post=False
+        )
+
+        if chat_html.find('g_steamID = false;') > -1:  # not login
+            logging.debug('chat_html g_steamID = false')
+            return False
+
+        try:
+            self.steam_id = SteamIdParser(int(re.search(r'g_steamID = "(.*?)";', chat_html).group(1)))
+
+            self.access_token = re.search(r'WebAPI = new CWebAPI\( \'.*?\', \'.*?\', "(.*?)" \);', chat_html).group(1)
+
+            logging.info('self.session_id = {}'.format(self.session_id))
+            logging.info('self.steam_id64 = {}'.format(self.steam_id))
+            logging.info('self.access_token = {}'.format(self.access_token))
+        except AttributeError:
+            logging.debug('_check_is_login AttributeError')
+            return False
+
+        return True
+
+    async def _check_mobile_is_login(self):
+        _ = self.session_id  # gen session id
+        chat_html = await self.session.send_session(
+            url='http://steamcommunity.com/market/',
+            is_post=False
+        )
+        if chat_html.find('g_steamID = false;') > -1:  # not login
+            logging.debug('chat_html g_steamID = false')
+            logging.debug(self.session.get_cookies())
+            return False
+
+        if not self.access_token:
+            logging.debug('self.access_token is None, need re-login!')
+            return False
+
+        try:
+            self.steam_id = SteamIdParser(int(re.search(r'g_steamID = "(.*?)";', chat_html).group(1)))
+
+            logging.info('self.session_id = {}'.format(self.session_id))
+            logging.info('self.steam_id64 = {}'.format(self.steam_id))
+            logging.info('self.access_token = {}'.format(self.access_token))
+        except AttributeError:
+            logging.debug('_check_is_login AttributeError')
+            return False
+
+        return True
+
+    async def _login(self, **kwargs):
         query_data = {
             'username': '',
             'password': '',
@@ -276,11 +315,11 @@ class SteamWebBase(object):
         }
         query_data.update(dict(kwargs))
 
-        self.session_set_cookies(self.read_cookies())
-        if self._check_is_login():
+        self.session.set_cookies(self.read_cookies())
+        if await self._check_is_login():
             return True
 
-        rsa_data = self.send_request(
+        rsa_data = await self.session.send_request(
             url='https://steamcommunity.com/login/getrsakey/',
             data={'username': query_data.get('username')},
             is_post=True,
@@ -296,14 +335,14 @@ class SteamWebBase(object):
             rsa_data.get('publickey_exp')
         )
 
-        logging.info('pre cookies dologin: {}'.format(self.session_get_cookies()))
-        login_data = self.send_session(
+        logging.info('pre cookies dologin: {}'.format(self.session.get_cookies()))
+        login_data = await self.session.send_session(
             url='https://steamcommunity.com/login/dologin/',
             data=query_data,
             is_post=True,
             is_json=True
         )
-        cookies = self.session_get_cookies()
+        cookies = self.session.get_cookies()
         logging.info('post cookies dologin: {}'.format(cookies))
         logging.info('post result dologin: {}'.format(login_data))
 
@@ -316,29 +355,29 @@ class SteamWebBase(object):
                 # kwargs['loginfriendlyname'] = input('Enter device name: ')
 
                 kwargs = self.on_need_guardian(kwargs, login_data)
-                return self._login(**kwargs)
+                return await self._login(**kwargs)
 
             elif login_data.get('captcha_needed', False):
                 kwargs['captchagid'] = login_data['captcha_gid']
                 kwargs = self.on_need_captcha(kwargs, login_data)
-                return self._login(**kwargs)
+                return await self._login(**kwargs)
 
             elif login_data.get('requires_twofactor', False):
                 kwargs = self.on_need_twofactor(kwargs, login_data)
-                return self._login(**kwargs)
+                return await self._login(**kwargs)
 
             return False
 
         if query_data.get('remember_login'):
             pass
 
-        if self._check_is_login():
+        if await self._check_is_login():
             self.write_cookie()
             return True
 
         return False
 
-    def _mobile_login(self, **kwargs):
+    async def _mobile_login(self, **kwargs):
         query_data = {
             'username': '',
             'password': '',
@@ -355,12 +394,12 @@ class SteamWebBase(object):
         }
         query_data.update(dict(kwargs))
 
-        self.session_set_cookies(self.read_cookies())
-        self.access_token = self.load_config('oauth', default=dict()).get('token', None)
-        if self._check_mobile_is_login():
+        self.session.set_cookies(self.read_cookies())
+        self.access_token = self.config.load_config('oauth', default=dict()).get('token', None)
+        if await self._check_mobile_is_login():
             return True
 
-        rsa_data = self.send_mobile_request(
+        rsa_data = await self.session.send_mobile_request(
             url='https://steamcommunity.com/login/getrsakey/',
             data={'username': query_data.get('username')},
             is_post=True,
@@ -377,14 +416,14 @@ class SteamWebBase(object):
             rsa_data.get('publickey_exp')
         )
 
-        logging.info('pre cookies dologin: {}'.format(self.session_get_cookies()))
-        login_data = self.send_mobile_session(
+        logging.info('pre cookies dologin: {}'.format(self.session.get_cookies()))
+        login_data = await self.session.send_mobile_session(
             url='https://steamcommunity.com/login/dologin/',
             data=query_data,
             is_post=True,
             is_json=True,
         )
-        cookies = self.session_get_cookies()
+        cookies = self.session.get_cookies()
         logging.info('post cookies dologin: {}'.format(cookies))
         logging.info('post result dologin: {}'.format(login_data))
 
@@ -394,16 +433,16 @@ class SteamWebBase(object):
                 # kwargs['loginfriendlyname'] = input('Enter device name: ')
 
                 kwargs = self.on_need_guardian(kwargs, login_data)
-                return self._mobile_login(**kwargs)
+                return await self._mobile_login(**kwargs)
 
             elif login_data.get('captcha_needed', False):
                 kwargs['captchagid'] = login_data['captcha_gid']
                 kwargs = self.on_need_captcha(kwargs, login_data)
-                return self._mobile_login(**kwargs)
+                return await self._mobile_login(**kwargs)
 
             elif login_data.get('requires_twofactor', False):
                 kwargs = self.on_need_twofactor(kwargs, login_data)
-                return self._mobile_login(**kwargs)
+                return await self._mobile_login(**kwargs)
 
             return False
 
@@ -414,41 +453,40 @@ class SteamWebBase(object):
         self.access_token = oauth['oauth_token']
 
         # set cookies, too be sure :)
-        cookies = self.session_get_cookies()
-        self.session_clear()
-        self.session_set_cookies(cookies)
+        cookies = self.session.get_cookies()
+        self.session.clear()
+        self.session.set_cookies(cookies)
 
-        if self._check_mobile_is_login():
-            self.save_config('oauth', {'token': self.access_token})
+        if await self._check_mobile_is_login():
+            self.config.save_config('oauth', {'token': self.access_token})
             self.write_cookie()
             return True
 
         return False
 
     def on_need_guardian(self, kwargs, login_data):
-        kwargs['emailauth'] = input('Enter guardian code: ')
-        return kwargs
+        # kwargs['emailauth'] = input('Enter guardian code: ')
+        raise NotImplementedError('on_need_guardian')
 
     def on_need_captcha(self, kwargs, login_data):
-        kwargs['captcha_text'] = input(
-            'Enter captcha from url '
-            'https://store.steampowered.com/public/captcha.php?gid={} : '.format(login_data['captcha_gid'])
-        )
-        return kwargs
+        # kwargs['captcha_text'] = input(
+        #     'Enter captcha from url '
+        #     'https://store.steampowered.com/public/captcha.php?gid={} : '.format(login_data['captcha_gid'])
+        # )
+        raise NotImplementedError('on_need_captcha')
 
     def on_need_twofactor(self, kwargs, login_data):
-        kwargs['twofactorcode'] = input('Enter twofactor code: ')
-        return kwargs
+        # kwargs['twofactorcode'] = input('Enter twofactor code: ')
+        raise NotImplementedError('on_need_twofactor')
 
-    def logout(self):
-        pass
+    async def close(self):
+        self.session.close()
 
-    def __enter__(self):
-        # fixme _login
-        if self._mobile_login(username=self.username, password=self.password):
+    async def __aenter__(self):
+        if await self._mobile_login(username=self.username, password=self.password):  # fixme
             return self
         raise ValueError('not logged in')
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.logout()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 

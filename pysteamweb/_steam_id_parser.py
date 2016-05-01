@@ -7,6 +7,12 @@ class SteamIdParser(object):
         self.sid_base = 76561197960265728
         self.sid64 = self._to_64(sid)
 
+    def __str__(self):
+        return str(self.sid64)
+
+    def __repr__(self):
+        return '<SteamIdParser: {}>'.format(str(self.sid64))
+
     def _get_type(self, string):
         sid_type = 0
         if isinstance(string, int):
@@ -45,15 +51,15 @@ class SteamIdParser(object):
             if match:
                 account = int(match.group(1))
                 return self.sid_base + account
-        elif sid_type == 5:
-            url = 'http://steamcommunity.com/id/{}'.format(sid)
-            try:
-                data = requests.get(url, timeout=5)
-                match = re.search(r'"steamid":"(\d+)"', data.text)
-                if match:
-                    return int(match.group(1))
-            except requests.Timeout:
-                pass
+        # elif sid_type == 5:
+        #     url = 'http://steamcommunity.com/id/{}'.format(sid)
+        #     try:
+        #         data = requests.get(url, timeout=5)
+        #         match = re.search(r'"steamid":"(\d+)"', data.text)
+        #         if match:
+        #             return int(match.group(1))
+        #     except requests.Timeout:
+        #         pass
 
         raise ValueError('Unknown steam: {}'.format(sid))
 
@@ -75,13 +81,13 @@ class SteamIdParser(object):
 
     def as_steam3(self):
         return '[U:1:{}]'.format(self.as_account())
-
-    def as_url(self):
-        url = 'http://steamcommunity.com/profiles/{}'.format(self.as_64())
-        try:
-            data = requests.get(url, timeout=5)
-            match = re.search(r'https?://steamcommunity\.com/id/(.*?)/', data.url)
-
-            return match.group(1) if match is not None else None
-        except requests.Timeout:
-            return None
+    #
+    # def as_url(self):
+    #     url = 'http://steamcommunity.com/profiles/{}'.format(self.as_64())
+    #     try:
+    #         data = requests.get(url, timeout=5)
+    #         match = re.search(r'https?://steamcommunity\.com/id/(.*?)/', data.url)
+    #
+    #         return match.group(1) if match is not None else None
+    #     except requests.Timeout:
+    #         return None

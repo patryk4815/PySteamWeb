@@ -1,28 +1,39 @@
 Requirements
 ============
 
-* Python 3.4+ (or maybe python 3.3 [not tested])
+* Python 3.5+
 * pyCrypto
-* requests
+* aiohttp
 
 Instalation
 ===========
 
-* pip3 install pysteamweb
+* pip3 install pysteamweb-async
 
 Usage
 =====
 
 .. code-block:: python
 
+    >>> import asyncio
     >>> from pysteamweb import SteamWebBase
     >>>
-    >>> with SteamWebBase(username='steam_login', password='steam_password') as steam:
-    >>>     print(steam.send_session(url='http://steamcommunity.com/profiles/{}/edit'.format(steam.steam_id64), is_post=False))
-    '....return html string of this url...'
+    >>> async def main():
+    >>>     async with SteamWebBase(
+    >>>         username='<steam login>',
+    >>>         password='<steam password>',
+    >>>     ) as s:
+    >>>         print('logging success')
+    >>>         print(await s.session.send_session(url='http://steamcommunity.com/profiles/{}/edit'.format(s.steam_id), is_post=False))
+    >>>
+    >>>
+    >>> if __name__ == '__main__':
+    >>>     loop = asyncio.get_event_loop()
+    >>>     loop.run_until_complete(main())
+    >>>     loop.close()
 
 
 Demos
 =====
 
-- `Automatic get guardian code from mailbox <https://github.com/patryk4815/PySteamWeb/blob/master/demo/guardian_code_and_pop3.py>`__
+Look at demo folder
