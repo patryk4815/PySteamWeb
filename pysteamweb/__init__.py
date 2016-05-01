@@ -5,8 +5,10 @@ if sys.version_info < (3, 5):
 
 from pysteamweb.steam_base import SteamWebBase
 from pysteamweb._steam_id_parser import SteamIdParser
+from . import plugins
 
 __all__ = [
     'SteamWebBase',
     'SteamIdParser',
+    'plugins',
 ]
