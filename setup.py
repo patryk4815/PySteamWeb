@@ -1,12 +1,9 @@
-try:
-    from setuptools import setup
-except ImportError:
-    from distutils.core import setup
+from setuptools import setup, find_packages
 
 setup(
     name='PySteamWeb',
-    version='1.0.1',
-    packages=['pysteamweb'],
+    version='1.0.2',
+    packages=find_packages(include=['pysteamweb*']),
     url='https://github.com/patryk4815/PySteamWeb',
     license='MIT',
     author='Patryk Sondej',
