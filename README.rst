@@ -8,7 +8,7 @@ Requirements
 Instalation
 ===========
 
-* pip3 install pysteamweb-async
+* pip3 install pysteamweb
 
 Usage
 =====

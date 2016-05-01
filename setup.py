@@ -4,9 +4,9 @@ except ImportError:
     from distutils.core import setup
 
 setup(
-    name='PySteamWeb Async',
+    name='PySteamWeb',
     version='1.0.0',
-    packages=['pysteamweb-async'],
+    packages=['pysteamweb'],
     url='https://github.com/patryk4815/PySteamWeb',
     license='MIT',
     author='Patryk Sondej',
