@@ -17,6 +17,8 @@ class ETradeOfferState:
     Canceled = 6  # The sender cancelled the offer
     Declined = 7  # The recipient declined the offer
 
+    # 	Some of the items in the offer are no longer available (indicated by the missing flag in the output)
+    InvalidItems = 8
     # The offer hasn't been sent yet and is awaiting email/mobile confirmation. The offer is only visible to the sender.
     CreatedNeedsConfirmation = 9
     # Either party canceled the offer via email/mobile. The offer is visible to both parties,
@@ -46,11 +48,12 @@ class SteamTrade(SteamWebBase):
         regex = re.compile(r'^https?://steamcommunity\.com/tradeoffer/new/\?partner=(\d+?)&token=([a-zA-Z0-9_-]+?)$')
         return True if regex.match(trade_hash_url) is not None else False
 
-    async def get_trade_url(self):
+    async def get_trade_url(self, timeout=None):
         referer = 'https://steamcommunity.com/profiles/{}/tradeoffers/privacy'.format(self.steam_id)
         raw_html = await self.session.send_session(
             url=referer,
             is_post=False,
+            timeout=timeout,
         )
 
         regex = re.search(r'<input.*?id="trade_offer_access_url".*?value="(.*?)"', raw_html)
@@ -64,7 +67,8 @@ class SteamTrade(SteamWebBase):
                 is_post=True,
                 is_json=True,
                 is_ajax=True,
-                referer=referer
+                referer=referer,
+                timeout=timeout,
             )
 
             return 'https://steamcommunity.com/tradeoffer/new/?partner={}&token={}'.format(
@@ -135,13 +139,13 @@ class SteamTrade(SteamWebBase):
             data=data,
             is_post=True,
             is_json=True,
-            timeout=5,
-            referer=url_referer
+            referer=url_referer,
+            timeout=kwargs.get('timeout', None),
         )
         logging.info('Send trade response: {}'.format(response))
         return response
 
-    async def trade_accept(self, trade_id, partner_sid64):
+    async def trade_accept(self, trade_id, partner_sid64, timeout=None):
         partner_sid = SteamIdParser(partner_sid64)
         data = await self.session.send_session(
             url='https://steamcommunity.com/tradeoffer/{}/accept'.format(trade_id),
@@ -154,13 +158,13 @@ class SteamTrade(SteamWebBase):
             },
             is_post=True,
             is_json=True,
-            timeout=10,
+            timeout=timeout,
             referer='https://steamcommunity.com/tradeoffer/{}/'.format(trade_id)
         )
         # {'needs_mobile_confirmation': True, 'needs_email_confirmation': True, 'email_domain': '', 'tradeid': None}
         return data
 
-    async def trade_cancel(self, trade_id, is_api=True):
+    async def trade_cancel(self, trade_id, is_api=True, timeout=None):
         """
         When my offer
         :param trade_id:
@@ -168,10 +172,10 @@ class SteamTrade(SteamWebBase):
         :return:
         """
         if is_api:
-            return await self._api_trade_cancel(trade_id)
-        return await self._steam_trade_cancel(trade_id)
+            return await self._api_trade_cancel(trade_id, timeout=timeout)
+        return await self._steam_trade_cancel(trade_id, timeout=timeout)
 
-    async def trade_decline(self, trade_id, is_api=True):
+    async def trade_decline(self, trade_id, is_api=True, timeout=None):
         """
         When their offer
         :param trade_id:
@@ -179,10 +183,10 @@ class SteamTrade(SteamWebBase):
         :return:
         """
         if is_api:
-            return await self._api_trade_decline(trade_id)
-        return await self._steam_trade_decline(trade_id)
+            return await self._api_trade_decline(trade_id, timeout=timeout)
+        return await self._steam_trade_decline(trade_id, timeout=timeout)
 
-    async def _steam_trade_cancel(self, trade_id):
+    async def _steam_trade_cancel(self, trade_id, timeout=None):
         url = 'https://steamcommunity.com/tradeoffer/{}/cancel'.format(trade_id),
         referer = 'http://steamcommunity.com/profiles/{}/tradeoffers/sent'.format(self.steam_id)
 
@@ -193,12 +197,12 @@ class SteamTrade(SteamWebBase):
             },
             is_post=True,
             is_json=True,
-            timeout=10,
+            timeout=timeout,
             referer=referer
         )
         return data
 
-    async def _steam_trade_decline(self, trade_id):
+    async def _steam_trade_decline(self, trade_id, timeout=None):
         url = 'https://steamcommunity.com/tradeoffer/{}/decline'.format(trade_id)
         referer = 'http://steamcommunity.com/profiles/{}/tradeoffers/'.format(self.steam_id)
 
@@ -209,12 +213,12 @@ class SteamTrade(SteamWebBase):
             },
             is_post=True,
             is_json=True,
-            timeout=10,
+            timeout=timeout,
             referer=referer
         )
         return data
 
-    async def _api_trade_cancel(self, trade_id):
+    async def _api_trade_cancel(self, trade_id, timeout=None):
         context = {
             'key': self.api_key,
             'tradeofferid': trade_id,
@@ -224,10 +228,11 @@ class SteamTrade(SteamWebBase):
             url='https://api.steampowered.com/IEconService/CancelTradeOffer/v1/',
             is_post=True,
             is_json=True,
-            data=context
+            data=context,
+            timeout=timeout,
         )
 
-    async def _api_trade_decline(self, trade_id):
+    async def _api_trade_decline(self, trade_id, timeout=None):
         context = {
             'key': self.api_key,
             'tradeofferid': trade_id,
@@ -237,10 +242,11 @@ class SteamTrade(SteamWebBase):
             url='https://api.steampowered.com/IEconService/DeclineTradeOffer/v1/',
             is_post=True,
             is_json=True,
-            data=context
+            data=context,
+            timeout=timeout,
         )
 
-    async def get_trade_offers(self, get_sent_offers=False, get_received_offers=True, get_history_only=False, timedelta_cutoff=3600):
+    async def get_trade_offers(self, get_sent_offers=False, get_received_offers=True, get_history_only=False, timedelta_cutoff=3600, timeout=None):
         context = {
             'key': self.api_key,
             'get_sent_offers': 1 if get_sent_offers else 0,
@@ -256,10 +262,11 @@ class SteamTrade(SteamWebBase):
             url='https://api.steampowered.com/IEconService/GetTradeOffers/v1/',
             is_post=False,
             is_json=True,
-            data=context
+            data=context,
+            timeout=timeout,
         )
 
-    async def get_trade_offer(self, trade_id):
+    async def get_trade_offer(self, trade_id, timeout=None):
         context = {
             'key': self.api_key,
             'tradeofferid': trade_id,
@@ -270,10 +277,11 @@ class SteamTrade(SteamWebBase):
             url='https://api.steampowered.com/IEconService/GetTradeOffer/v1/',
             is_post=False,
             is_json=True,
-            data=context
+            data=context,
+            timeout=timeout,
         )
 
-    async def get_backpack(self, app_id, context_id=2, group_by_market_name=True):
+    async def get_backpack(self, app_id, context_id=2, group_by_market_name=True, timeout=None):
         response = await self.session.send_request(
             url='http://steamcommunity.com/profiles/{sid64}/inventory/json/{app_id}/{context_id}'.format(
                 sid64=self.steam_id.as_64(),
@@ -282,6 +290,7 @@ class SteamTrade(SteamWebBase):
             ),
             is_post=False,
             is_json=True,
+            timeout=timeout,
         )
 
         if not group_by_market_name:

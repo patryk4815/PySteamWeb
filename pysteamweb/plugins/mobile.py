@@ -76,13 +76,14 @@ class _SteamMobileConfirmation(SteamWebBase):
 
         return b64encode(hmac.new(b64decode(secret), bytes(buffer), sha1).digest()).decode()
 
-    async def get_confirmations(self):
+    async def get_confirmations(self, timeout=None):
         data = await self.session.send_session(
             url='https://steamcommunity.com/mobileconf/conf',
             data=self._get_confirmation_query('conf'),
             is_post=False,
             is_json=False,
             is_ajax=False,
+            timeout=timeout,
         )
         soup = BeautifulSoup(data)
 
@@ -108,7 +109,7 @@ class _SteamMobileConfirmation(SteamWebBase):
             'tag': tag,
         }
 
-    async def _send_confirmation(self, operation, confirmation_id, confirmation_key):
+    async def _send_confirmation(self, operation, confirmation_id, confirmation_key, timeout=None):
         data = {
             'op': operation,
             'cid': confirmation_id,
@@ -122,21 +123,22 @@ class _SteamMobileConfirmation(SteamWebBase):
             is_post=False,
             is_json=True,
             is_ajax=False,
+            timeout=timeout,
         )
 
-    async def accept_confirmation(self, confirmation_id, confirmation_key):
-        return await self._send_confirmation('allow', confirmation_id, confirmation_key)
+    async def accept_confirmation(self, confirmation_id, confirmation_key, timeout=None):
+        return await self._send_confirmation('allow', confirmation_id, confirmation_key, timeout=timeout)
 
-    async def cancel_confirmation(self, confirmation_id, confirmation_key):
-        return await self._send_confirmation('cancel', confirmation_id, confirmation_key)
+    async def cancel_confirmation(self, confirmation_id, confirmation_key, timeout=None):
+        return await self._send_confirmation('cancel', confirmation_id, confirmation_key, timeout=timeout)
 
 
 class _SteamActive2fa(_SteamMobileConfirmation):
-    async def has_phone(self):
-        data = await self.session.send_session(url='https://store.steampowered.com/phone/add', is_json=False, is_ajax=False, is_post=False)
+    async def has_phone(self, timeout=None):
+        data = await self.session.send_session(url='https://store.steampowered.com/phone/add', is_json=False, is_ajax=False, is_post=False, timeout=timeout)
         return data.find('javascript:submitPhoneEdit();') != -1
 
-    async def check_phone(self, phone):
+    async def check_phone(self, phone, timeout=None):
         return await self.session.send_session(
             url='https://store.steampowered.com//phone/validate',
             data={
@@ -144,9 +146,10 @@ class _SteamActive2fa(_SteamMobileConfirmation):
             },
             is_post=False,
             is_json=True,
+            timeout=timeout,
         )
 
-    async def add_phone(self, phone):
+    async def add_phone(self, phone, timeout=None):
         return await self.session.send_session(
             url='https://store.steampowered.com//phone/add_ajaxop',
             data={
@@ -159,9 +162,10 @@ class _SteamActive2fa(_SteamMobileConfirmation):
             is_json=True,
             is_ajax=True,
             referer='https://store.steampowered.com/phone/add',
+            timeout=timeout,
         )
 
-    async def sms_phone(self, sms_code):
+    async def sms_phone(self, sms_code, timeout=None):
         return await self.session.send_session(
             url='https://store.steampowered.com//phone/add_ajaxop',
             data={
@@ -174,14 +178,16 @@ class _SteamActive2fa(_SteamMobileConfirmation):
             is_json=True,
             is_ajax=True,
             referer='https://store.steampowered.com/phone/add',
+            timeout=timeout,
         )
 
-    async def get_emergency_codes(self):
+    async def get_emergency_codes(self, timeout=None):
         await self.session.send_session(
             url='https://store.steampowered.com/twofactor/manage',
             is_post=False,
             is_json=False,
             is_ajax=False,
+            timeout=timeout,
         )
         await self.session.send_session(
             url='https://store.steampowered.com/twofactor/manage_action',
@@ -193,6 +199,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
             is_json=False,
             is_ajax=False,
             referer='https://store.steampowered.com/twofactor/manage',
+            timeout=timeout,
         )
 
         auth_code = self.generate_auth_code(self.shared_secret)
@@ -206,6 +213,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
             is_json=False,
             is_ajax=False,
             referer='https://store.steampowered.com/twofactor/manage_action',
+            timeout=timeout,
         )
 
         list_codes = list()
@@ -220,7 +228,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
                 list_codes.append(code)
         return list_codes
 
-    async def enable_two_factor(self):
+    async def enable_two_factor(self, timeout=None):
         device_id = self.device_id
         logging.debug('device_id: {}'.format(device_id))
 
@@ -236,9 +244,10 @@ class _SteamActive2fa(_SteamMobileConfirmation):
             },
             is_post=True,
             is_json=True,
+            timeout=timeout,
         )
 
-    async def finalize_two_factor(self, shared_secret, sms_code):
+    async def finalize_two_factor(self, shared_secret, sms_code, timeout=None):
         time_diff = 0
         attempts_left = 30
 
@@ -258,6 +267,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
                 },
                 is_post=True,
                 is_json=True,
+                timeout=timeout,
             )
             logging.info(data)
 

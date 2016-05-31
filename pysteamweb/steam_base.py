@@ -93,6 +93,8 @@ class SessionBase(object):
                        referer=None, timeout=120, headers=None):
         if data is None:
             data = {}
+        if timeout is None:
+            timeout = 600
 
         headers_param = {}
         if referer is not None:
