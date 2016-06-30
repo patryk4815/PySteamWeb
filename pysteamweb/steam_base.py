@@ -129,7 +129,12 @@ class SessionBase(object):
         return await self._request(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
     async def send_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        # try:
         return await self._request(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+        # except ValueError as e:
+        #     if str(e) == 'Can redirect only to http or https: steammobile':
+        #         self.on_session_expire()
+        #     pass
 
     @request_as_mobile
     async def _request_mobile(self, *args, **kwargs):

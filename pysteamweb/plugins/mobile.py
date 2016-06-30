@@ -98,39 +98,68 @@ class _SteamMobileConfirmation(SteamWebBase):
             })
         return confirmations
 
-    def _get_confirmation_query(self, tag):
-        time_int = int(time.time())
+    def _get_confirmation_query(self, tag, hash_time=None):
+        if hash_time is None:
+            hash_time = int(time.time())
+
         return {
             'p': self.device_id,
             'a': str(self.steam_id),
-            'k': self.generate_hash_for_time(self.identity_secret, time_int, tag),
-            't': time_int,
+            'k': self.generate_hash_for_time(self.identity_secret, hash_time, tag),
+            't': hash_time,
             'm': 'android',
             'tag': tag,
         }
 
-    async def _send_confirmation(self, operation, confirmation_id, confirmation_key, timeout=None):
-        data = {
-            'op': operation,
-            'cid': confirmation_id,
-            'ck': confirmation_key,
-        }
-        data.update(self._get_confirmation_query(operation))
+    async def _send_confirmation(self, url, operation_tag, params=None, timeout=None, hash_time=None):
+        if params is None:
+            params = {}
+        params.update(self._get_confirmation_query(operation_tag, hash_time=hash_time))
 
         return await self.session.send_session(
-            url='https://steamcommunity.com/mobileconf/ajaxop',
-            data=data,
+            url='https://steamcommunity.com/mobileconf/' + url,
+            data=params,
             is_post=False,
             is_json=True,
             is_ajax=False,
             timeout=timeout,
         )
 
-    async def accept_confirmation(self, confirmation_id, confirmation_key, timeout=None):
-        return await self._send_confirmation('allow', confirmation_id, confirmation_key, timeout=timeout)
+    async def accept_confirmation(self, confirmation_id, confirmation_key, timeout=None, hash_time=None):
+        params = {
+            'op': 'allow',
+            'cid': confirmation_id,
+            'ck': confirmation_key,
+        }
+        return await self._send_confirmation(
+            'ajaxop',
+            'allow',
+            params=params,
+            timeout=timeout,
+            hash_time=hash_time,
+        )
 
-    async def cancel_confirmation(self, confirmation_id, confirmation_key, timeout=None):
-        return await self._send_confirmation('cancel', confirmation_id, confirmation_key, timeout=timeout)
+    async def cancel_confirmation(self, confirmation_id, confirmation_key, timeout=None, hash_time=None):
+        params = {
+            'op': 'cancel',
+            'cid': confirmation_id,
+            'ck': confirmation_key,
+        }
+        return await self._send_confirmation(
+            'ajaxop',
+            'cancel',
+            params=params,
+            timeout=timeout,
+            hash_time=hash_time,
+        )
+
+    async def get_confirmation_details(self, confirmation_id, timeout=None, hash_time=None):
+        return await self._send_confirmation(
+            'details/{}'.format(confirmation_id),
+            'details',
+            timeout=timeout,
+            hash_time=hash_time,
+        )
 
 
 class _SteamActive2fa(_SteamMobileConfirmation):
