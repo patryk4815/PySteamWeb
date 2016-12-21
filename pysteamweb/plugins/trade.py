@@ -2,8 +2,8 @@ import logging
 import time
 import re
 import json
+import traceback
 
-from urllib.parse import parse_qs, urlparse
 from .. import SteamWebBase, SteamIdParser
 
 
@@ -44,9 +44,95 @@ class SteamTrade(SteamWebBase):
         self.api_key = kwargs.get('api_key')
 
     @classmethod
-    def is_valid_trade_url(cls, trade_hash_url):
-        regex = re.compile(r'^https?://steamcommunity\.com/tradeoffer/new/\?partner=(\d+?)&token=([a-zA-Z0-9_-]+?)$')
-        return True if regex.match(trade_hash_url) is not None else False
+    def is_valid_trade_url(cls, trade_url):
+        regex = re.compile(r'^https?://steamcommunity\.com/tradeoffer/new/\?partner=(\d+)&token=([a-zA-Z0-9_-]+)$')
+        return True if regex.match(trade_url) is not None else False
+
+    @classmethod
+    def get_parse_trade_url(cls, trade_url):
+        regex = re.compile(r'^https?://steamcommunity\.com/tradeoffer/new/\?partner=(\d+)&token=([a-zA-Z0-9_-]+)$')
+        match = regex.match(trade_url)
+        if match:
+            return None
+
+        return {
+            'token': match.group(1),
+            'partner': match.group(2),
+        }
+
+    async def check_user_trade_url(self, trade_url):
+        logging.debug('start check_user_trade_url, for: {}'.format(trade_url))
+
+        trade_data = self.get_parse_trade_url(trade_url)
+        if not trade_data:
+            return {
+                'is_valid': False,
+                'message': 'Invalid trade url',
+            }
+
+        partner = trade_data['partner']
+        token = trade_data['token']
+
+        logging.debug('post check_user_trade_url, parsed: {}, {}'.format(token, partner))
+        try:
+            response = await self.session.send_session(
+                url='https://steamcommunity.com/tradeoffer/new/?partner={}&token={}'.format(
+                    partner,
+                    token,
+                ),
+                is_post=False,
+                timeout=10,
+            )
+        except Exception as e:
+            logging.warning('expecion on checking trade url: {}, {}'.format(
+                e,
+                traceback.format_exc(),
+            ))
+            return {
+                'is_valid': False,
+                'message': 'Steam is down',
+            }
+
+        message = 'OK'
+        if '<div id="error_msg">' in response:
+            match = re.search(r'<div id="error_msg">([^<]+)</div>', response, re.MULTILINE | re.DOTALL)
+            if match:
+                message = match.group(1)
+                message = str(message).strip()
+            else:
+                message = 'Steam is down'
+                logging.warning('invalid message?: {}'.format(response))
+
+            return {
+                'is_valid': False,
+                'message': message,
+            }
+
+        days_my_escrow = 0
+        days_their_escrow = 0
+        match = re.search(r'g_daysMyEscrow\s+=\s+(\d+);', response)
+        if match:
+            days_my_escrow = int(match.group(1))
+
+        match = re.search(r'g_daysTheirEscrow\s+=\s+(\d+);', response)
+        if match:
+            days_their_escrow = int(match.group(1))
+
+        is_full_valid = True if 'Make Offer' in response else False
+        if not is_full_valid:
+            logging.warning('invalid trade?: {}'.format(response))
+
+        # we can't trade with user who have hold
+        if days_their_escrow != 0:
+            is_full_valid = False
+            message = 'You don\'t have Steam Guard Mobile Authenticator.'
+
+        return {
+            'is_valid': is_full_valid,
+            'message': message,
+            'days_my_escrow': days_my_escrow,
+            'days_their_escrow': days_their_escrow,
+        }
 
     async def get_trade_url(self, timeout=None):
         referer = 'https://steamcommunity.com/profiles/{}/tradeoffers/privacy'.format(self.steam_id)
@@ -126,13 +212,15 @@ class SteamTrade(SteamWebBase):
             'trade_offer_create_params': '{}',
         }
         if trade_hash_url:
-            url_params = parse_qs(urlparse(trade_hash_url).query)
+            trade_data = self.get_parse_trade_url(trade_hash_url)
+            if not trade_data:
+                raise AssertionError('Invalid trade url')
 
             data.update({
                 'trade_offer_create_params': json.dumps({
-                    'trade_offer_access_token': url_params['token'][0]
+                    'trade_offer_access_token': trade_data['token']
                 }, separators=(',', ':')),
-                'partner': SteamIdParser(url_params['partner'][0]).as_64(),
+                'partner': SteamIdParser(trade_data['partner']).as_64(),
             })
         else:
             data.update({
@@ -327,16 +415,3 @@ class SteamTrade(SteamWebBase):
             items.setdefault(item_key, list()).append(item_asset_id)
 
         return items, descriptions
-
-    async def get_held(self):
-        '''
-        <div class="pagecontent" id="mainContent">
-
-	<script>
-	// The number of days the trade will be placed on hold if the corresponding party is sending items in the trade.
-	// We round up, thus even a single second of escrow will be shown to the user.
-	var g_daysMyEscrow = 0;
-	var g_daysTheirEscrow = 15;
-</script>
-        :return:
-        '''
