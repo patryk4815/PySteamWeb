@@ -161,6 +161,21 @@ class _SteamMobileConfirmation(SteamWebBase):
             hash_time=hash_time,
         )
 
+    async def accept_mobile_by_trade_id(self, trade_id):
+        for data_confirm in (await self.get_confirmations(timeout=60)):
+            logging.info('{}, data_confirm: {}'.format(self.username, data_confirm))
+
+            ret = await self.get_confirmation_details(data_confirm['id'], timeout=20)
+            html_data = str(ret.get('html', ''))
+
+            if 'id="tradeofferid_{}"'.format(trade_id) in html_data:
+                ret = await self.accept_confirmation(data_confirm['id'], data_confirm['key'], timeout=20)
+                logging.info('{}, ret_confirm: {}'.format(self.username, ret))
+                # ret_confirm: {'success': True}
+                return ret.get('success', False)
+
+        return False
+
 
 class _SteamActive2fa(_SteamMobileConfirmation):
     async def has_phone(self, timeout=None):
