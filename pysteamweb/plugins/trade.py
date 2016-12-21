@@ -83,9 +83,15 @@ class SteamTrade(SteamWebBase):
         logging.info('Send trade: {}'.format(kwargs))
 
         trade_hash_url = kwargs.get('trade_hash_url')
-        items = kwargs.get('items', [])
+        items = kwargs.get('items', [
+            [],
+            [],
+        ])
         msg = kwargs.get('msg', '')
         partner_sid = None
+
+        if not items or len(items) != 2 or not isinstance(items[0], (list, tuple)) or not isinstance(items[1], (list, tuple)):
+            raise AssertionError('Invalid items')
 
         if not trade_hash_url:
             partner_sid = SteamIdParser(kwargs.get('partner_sid64'))
@@ -101,12 +107,12 @@ class SteamTrade(SteamWebBase):
             "newversion": True,
             "version": 2,
             "me": {
-                "assets": items,  # {"appid": 440, "contextid": "2", "amount": 1, "assetid": "554608330"}
+                "assets": items[0],  # {"appid": 440, "contextid": "2", "amount": 1, "assetid": "554608330"}
                 "currency": [],
                 "ready": False
             },
             "them": {
-                "assets": [],
+                "assets": items[1],
                 "currency": [],
                 "ready": False
             }
