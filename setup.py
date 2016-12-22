@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='PySteamWeb',
-    version='1.1.0',
+    version='1.2.0',
     packages=find_packages(include=['pysteamweb*']),
     url='https://github.com/patryk4815/PySteamWeb',
     license='MIT',
@@ -13,7 +13,7 @@ setup(
     platforms='Posix; MacOS X; Windows',
     install_requires=[
         'pycrypto>=2.6',
-        'aiohttp>=0.21',
+        'aiohttp==1.1.6',
         'beautifulsoup4>=4.4',
     ]
 )

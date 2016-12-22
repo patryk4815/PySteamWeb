@@ -3,7 +3,7 @@ Requirements
 
 * Python 3.5+
 * pyCrypto
-* aiohttp
+* aiohttp 1.1.6
 
 Instalation
 ===========
