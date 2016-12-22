@@ -6,7 +6,10 @@ from base64 import b64encode
 from binascii import hexlify
 
 import asyncio
+from urllib.parse import urlsplit
+
 import aiohttp
+from aiohttp.cookiejar import URL
 
 from http.cookies import Morsel
 from Crypto.Cipher import PKCS1_v1_5
@@ -24,23 +27,23 @@ def request_as_mobile(func):
         "Accept": "text/javascript, text/html, application/xml, text/xml, */*"
     }
 
-    def _add_cookie(session):
-        session.cookies.update({
+    def _add_cookie(_self):
+        _self.set_cookies({
             'mobileClientVersion': '0 (2.1.3)',
             'mobileClient': 'android',
         })
 
-    def _remove_cookie(session):
-        del session.cookies['mobileClientVersion']
-        del session.cookies['mobileClient']
+    def _remove_cookie(_self):
+        _self.del_cookie('mobileClientVersion')
+        _self.del_cookie('mobileClient')
 
     async def _inner(self, *args, **kwargs):
         if not kwargs.get('headers'):
             kwargs['headers'] = mobile_headers.copy()
 
-        _add_cookie(self._session)
+        _add_cookie(self)
         ret = await func(self, *args, **kwargs)
-        _remove_cookie(self._session)
+        _remove_cookie(self)
         return ret
 
     return _inner
@@ -60,31 +63,39 @@ class SessionBase(object):
     def close(self):
         self._session.close()
 
+    def _get_domain_for_request_url(self, response_url):
+        url_parsed = urlsplit(response_url or "")
+        hostname = url_parsed.hostname
+        return hostname if hostname else ''
+
     def clear(self):
-        self._session.cookies.clear()
+        self._session.cookie_jar.clear()
 
-    def set_cookies(self, cookies):
-        self._session.cookies.update(cookies)
+    def del_cookie(self, name, response_url=None):
+        cookies = self._session.cookie_jar._cookies
+        domain = self._get_domain_for_request_url(response_url)
+        if domain in cookies:
+            cookies[domain].pop(name, None)
 
-    def get_cookies(self, domain='steamcommunity.com'):
+    def set_cookies(self, cookies, response_url=None):
+        self._session.cookie_jar.update_cookies(cookies, response_url=URL(response_url if response_url else ''))
+
+    def get_cookies(self, response_url='http://steamcommunity.com'):
+        global_domain = self._get_domain_for_request_url(response_url)
+
         ret = dict()
-        for cookie_name, cookie_value in self._session.cookies.items():
-            if isinstance(cookie_value, Morsel):
-                domain = cookie_value.get('domain')
-                value = cookie_value.value
-            else:
-                domain = None
-                value = cookie_value
+        for cookie in self._session.cookie_jar:
+            domain = cookie.get('domain')
+            value = cookie.value
 
-            ret.setdefault(domain if domain else None, dict()).setdefault(
-                cookie_name,
+            ret.setdefault(domain if domain else '', dict()).setdefault(
+                cookie.key,
                 value
             )
 
         ret2 = dict()
-        ret2.update(ret.get(None, dict()))
-        if domain:
-            ret2.update(ret.get(domain, dict()))
+        ret2.update(ret.get('', dict()))  # first get shared
+        ret2.update(ret.get(global_domain, dict()))
 
         return ret2
 
@@ -104,7 +115,7 @@ class SessionBase(object):
         if headers is not None:
             headers_param = headers.copy()
 
-        with aiohttp.Timeout(timeout):
+        with aiohttp.Timeout(timeout):  # TODO: rewrite timeout to new structure
             if is_post:
                 r = await module.post(url, data=data, headers=headers_param)
                 if is_json:
