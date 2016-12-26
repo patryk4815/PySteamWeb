@@ -56,8 +56,8 @@ class SteamTrade(SteamWebBase):
             return None
 
         return {
-            'token': match.group(1),
-            'partner': match.group(2),
+            'partner': match.group(1),
+            'token': match.group(2),
         }
 
     async def check_user_trade_url(self, trade_url):
@@ -95,6 +95,8 @@ class SteamTrade(SteamWebBase):
 
         message = 'OK'
         if '<div id="error_msg">' in response:
+            logging.warning('steam_error on checking trade url: {}'.format(response))
+
             match = re.search(r'<div id="error_msg">([^<]+)</div>', response, re.MULTILINE | re.DOTALL)
             if match:
                 message = match.group(1)
