@@ -52,7 +52,7 @@ class SteamTrade(SteamWebBase):
     def get_parse_trade_url(cls, trade_url):
         regex = re.compile(r'^https?://steamcommunity\.com/tradeoffer/new/\?partner=(\d+)&token=([a-zA-Z0-9_-]+)$')
         match = regex.match(trade_url)
-        if match:
+        if not match:
             return None
 
         return {
