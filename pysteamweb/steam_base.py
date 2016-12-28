@@ -141,7 +141,7 @@ class SessionBase(object):
         if self.afunc_check_is_expire is None:
             return False
 
-        return await self.afunc_check_is_expire(url, data, is_post, is_json, return_=return_, raise_=raise_)
+        return await self.afunc_check_is_expire(url=url, data=data, is_post=is_post, is_json=is_json, return_=return_, raise_=raise_)
 
     async def send_request(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
         return await self._request(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
