@@ -123,6 +123,7 @@ class SteamTrade(SteamWebBase):
         is_full_valid = True if 'Make Offer' in response else False
         if not is_full_valid:
             logging.warning('invalid trade?: {}'.format(response))
+            message = 'Steam session expired'
 
         # we can't trade with user who have hold
         if days_their_escrow != 0:

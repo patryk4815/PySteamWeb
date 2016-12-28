@@ -50,7 +50,7 @@ def request_as_mobile(func):
 
 
 class SessionBase(object):
-    def __init__(self, loop=None):
+    def __init__(self, loop=None, afunc_check_is_expire=None):
         if loop is None:
             loop = asyncio.get_event_loop()
 
@@ -59,6 +59,7 @@ class SessionBase(object):
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
                           'Chrome/45.0.2453.0 Safari/537.36'
         })
+        self.afunc_check_is_expire = afunc_check_is_expire
 
     def close(self):
         self._session.close()
@@ -136,25 +137,60 @@ class SessionBase(object):
                     module.close()
         return ret
 
-    async def send_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+    async def check_is_expire(self, *, url, data, is_post, is_json, return_=None, raise_=None):
+        if self.afunc_check_is_expire is None:
+            return False
+
+        return await self.afunc_check_is_expire(url, data, is_post, is_json, return_=return_, raise_=raise_)
+
+    async def send_request(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
         return await self._request(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    async def send_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        # try:
+    async def send_session(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None, check_when_expire=True):
+        is_expire = False
+
+        try:
+            ret = await self._request(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+            if check_when_expire:
+                is_expire = await self.check_is_expire(return_=ret, url=url, data=data, is_post=is_post, is_json=is_json)
+
+            if not is_expire:
+                return ret
+
+        except Exception as e:
+            if check_when_expire:
+                is_expire = await self.check_is_expire(raise_=e, url=url, data=data, is_post=is_post, is_json=is_json)
+
+            if not is_expire:
+                raise
+
         return await self._request(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
-        # except ValueError as e:
-        #     if str(e) == 'Can redirect only to http or https: steammobile':
-        #         self.on_session_expire()
-        #     pass
 
     @request_as_mobile
     async def _request_mobile(self, *args, **kwargs):
         return await self._request(*args, **kwargs)
 
-    async def send_mobile_request(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+    async def send_mobile_request(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
         return await self._request_mobile(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    async def send_mobile_session(self, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+    async def send_mobile_session(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None, check_when_expire=True):
+        is_expire = False
+
+        try:
+            ret = await self._request_mobile(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+            if check_when_expire:
+                is_expire = await self.check_is_expire(return_=ret, url=url, data=data, is_post=is_post, is_json=is_json)
+
+            if not is_expire:
+                return ret
+
+        except Exception as e:
+            if check_when_expire:
+                is_expire = await self.check_is_expire(raise_=e, url=url, data=data, is_post=is_post, is_json=is_json)
+
+            if not is_expire:
+                raise
+
         return await self._request_mobile(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
 
@@ -231,12 +267,29 @@ class SteamWebBase(object):
 
         self.username = kwargs.get('username')
         self.password = kwargs.get('password')
-        self.session = SessionBase(loop=self._loop)
+        self.session = SessionBase(loop=self._loop, afunc_check_is_expire=self.check_session_expire)
         self.config = ConfigBase(self.username)
 
         # init_auth_guardian = kwargs.get('init_cookies')
         # if init_auth_guardian:
         #     self.session.set_cookies(init_auth_guardian)
+
+    async def check_session_expire(self, *, url, data, is_post, is_json, return_=None, raise_=None):
+        is_relogin = False
+        if raise_:
+            if str(raise_) == 'Can redirect only to http or https: steammobile':
+                is_relogin = True
+
+        if return_:
+            if not is_json and not is_post:  # GET + html
+                if 'g_steamID = false;' in return_:
+                    is_relogin = True
+
+        if not is_relogin:
+            return False
+
+        await self.__aenter__()
+        return True
 
     def read_cookies(self):
         return self.config.load_config('cookies', default=dict())
@@ -270,10 +323,11 @@ class SteamWebBase(object):
         _ = self.session_id  # gen session id
         chat_html = await self.session.send_session(
             url='https://steamcommunity.com/chat/',
-            is_post=False
+            is_post=False,
+            check_when_expire=False,
         )
 
-        if chat_html.find('g_steamID = false;') > -1:  # not login
+        if 'g_steamID = false;' in chat_html:  # not login
             logging.debug('chat_html g_steamID = false')
             return False
 
@@ -295,9 +349,10 @@ class SteamWebBase(object):
         _ = self.session_id  # gen session id
         chat_html = await self.session.send_session(
             url='http://steamcommunity.com/market/',
-            is_post=False
+            is_post=False,
+            check_when_expire=False,
         )
-        if chat_html.find('g_steamID = false;') > -1:  # not login
+        if 'g_steamID = false;' in chat_html:  # not login
             logging.debug('chat_html g_steamID = false')
             logging.debug(self.session.get_cookies())
             return False
@@ -341,7 +396,7 @@ class SteamWebBase(object):
             url='https://steamcommunity.com/login/getrsakey/',
             data={'username': query_data.get('username')},
             is_post=True,
-            is_json=True
+            is_json=True,
         )
         if not rsa_data.get('success'):
             return False
@@ -358,7 +413,8 @@ class SteamWebBase(object):
             url='https://steamcommunity.com/login/dologin/',
             data=query_data,
             is_post=True,
-            is_json=True
+            is_json=True,
+            check_when_expire=False,
         )
         cookies = self.session.get_cookies()
         logging.info('post cookies dologin: {}'.format(cookies))
@@ -440,6 +496,7 @@ class SteamWebBase(object):
             data=query_data,
             is_post=True,
             is_json=True,
+            check_when_expire=False,
         )
         cookies = self.session.get_cookies()
         logging.info('post cookies dologin: {}'.format(cookies))
