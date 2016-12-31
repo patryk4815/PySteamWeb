@@ -2,6 +2,7 @@ import json
 import os
 import re
 import logging
+import traceback
 import warnings
 from base64 import b64encode
 from binascii import hexlify
@@ -10,6 +11,7 @@ import asyncio
 from urllib.parse import urlsplit
 
 import aiohttp
+import time
 from aiohttp.cookiejar import URL
 
 from http.cookies import Morsel
@@ -265,10 +267,9 @@ class SteamWebBase(object):
     def __init__(self, *args, **kwargs):
         loop = kwargs.get('loop')
         if loop is None:
-            self._loop = asyncio.get_event_loop()
-        else:
-            self._loop = loop
+            loop = asyncio.get_event_loop()
 
+        self._loop = loop
         self._session_id = None
         self.steam_id = None
         self.access_token = None
@@ -278,11 +279,51 @@ class SteamWebBase(object):
         self.session = SessionBase(loop=self._loop, afunc_check_is_expire=self.check_session_expire)
         self.config = ConfigBase(self.username)
 
-        # init_auth_guardian = kwargs.get('init_cookies')
-        # if init_auth_guardian:
-        #     self.session.set_cookies(init_auth_guardian)
+        self._auto_reconnect = True
+        self._max_reconnect = 30
+        self._current_reconnect = 0
+        self._last_reconnect = 0
+        self._task_interval_check_session = None
+
+    async def on_interval_check_session(self):
+        if not self._auto_reconnect:
+            return
+
+        await asyncio.sleep(60)  # 1 min, delay, when start
+        while True:
+            try:
+                try:
+                    # if this return None, then there is no session
+                    data = self.session.send_session(
+                        url='http://steamcommunity.com/actions/GetNotificationCounts',
+                        is_post=False,
+                        is_json=True,
+                        is_ajax=True,
+                        timeout=4,
+                        check_when_expire=False
+                    )
+                except asyncio.TimeoutError:
+                    logging.warning('on_interval_check_session, timeout')
+                    await asyncio.sleep(60)  # 1 min
+                    continue
+
+                if data is not None:
+                    logging.info('on_interval_check_session, session OK')
+                    await asyncio.sleep(60)  # 1 min
+                    continue
+
+                logging.info('on_interval_check_session, session EXPIRE')
+                await self.reconnect()
+                await asyncio.sleep(300)  # 5 min
+
+            except asyncio.TimeoutError:
+                logging.warning('on_interval_check_session, exception: {}'.format(traceback.format_exc()))
+                await asyncio.sleep(180)  # 3 min
 
     async def check_session_expire(self, *, url, params, data, is_post, is_json, return_=None, raise_=None):
+        if not self._auto_reconnect:
+            return False
+
         is_relogin = False
         if raise_:
             if str(raise_) == 'Can redirect only to http or https: steammobile':
@@ -296,7 +337,7 @@ class SteamWebBase(object):
         if not is_relogin:
             return False
 
-        await self.__aenter__()
+        await self.reconnect()
         return True
 
     def read_cookies(self):
@@ -562,12 +603,52 @@ class SteamWebBase(object):
         # kwargs['twofactorcode'] = input('Enter twofactor code: ')
         raise NotImplementedError('on_need_twofactor')
 
+    async def reconnect(self):
+        logging.debug('start reconnect')
+        if self._current_reconnect > self._max_reconnect:
+            self._loop.stop()
+            return False
+
+        last_reconnect = self._last_reconnect
+        self._last_reconnect = time.time()
+
+        if (time.time() - last_reconnect) < 60:
+            logging.debug('reconnect, too fast reconnect..')
+            return False
+
+        self._current_reconnect += 1
+        is_connect = await self.connect()
+
+        if is_connect:
+            self._current_reconnect = 0
+            logging.debug('reconnect, done')
+            return True
+
+        if self._current_reconnect > self._max_reconnect:
+            logging.debug('reconnect, too many reconnect')
+            self._loop.stop()
+
+        logging.debug('reconnect, not login')
+        return False
+
+    async def connect(self):
+        logging.debug('start connect')
+        is_login = await self._mobile_login(username=self.username, password=self.password)  # or use self._login
+        if not is_login:
+            return False
+
+        if self._task_interval_check_session is None:  # or self._task_interval_check_session.done()
+            self._task_interval_check_session = asyncio.ensure_future(self.on_interval_check_session())
+
+        return True
+
     async def close(self):
         self.session.close()
 
     async def __aenter__(self):
-        if await self._mobile_login(username=self.username, password=self.password):  # fixme
+        if await self.connect():
             return self
+
         raise ValueError('not logged in')
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
