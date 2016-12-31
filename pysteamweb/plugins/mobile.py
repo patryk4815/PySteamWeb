@@ -79,7 +79,7 @@ class _SteamMobileConfirmation(SteamWebBase):
     async def get_confirmations(self, timeout=None):
         data = await self.session.send_session(
             url='https://steamcommunity.com/mobileconf/conf',
-            data=self._get_confirmation_query('conf'),
+            params=self._get_confirmation_query('conf'),
             is_post=False,
             is_json=False,
             is_ajax=False,
@@ -118,7 +118,7 @@ class _SteamMobileConfirmation(SteamWebBase):
 
         return await self.session.send_session(
             url='https://steamcommunity.com/mobileconf/' + url,
-            data=params,
+            params=params,
             is_post=False,
             is_json=True,
             is_ajax=False,
@@ -185,7 +185,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
     async def check_phone(self, phone, timeout=None):
         return await self.session.send_session(
             url='https://store.steampowered.com//phone/validate',
-            data={
+            params={
                 'phoneNumber': phone,
             },
             is_post=False,
@@ -196,7 +196,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
     async def add_phone(self, phone, timeout=None):
         return await self.session.send_session(
             url='https://store.steampowered.com//phone/add_ajaxop',
-            data={
+            params={
                 'sessionID': self.session_id,
                 'op': 'get_phone_number',
                 'input': phone,
@@ -212,7 +212,7 @@ class _SteamActive2fa(_SteamMobileConfirmation):
     async def sms_phone(self, sms_code, timeout=None):
         return await self.session.send_session(
             url='https://store.steampowered.com//phone/add_ajaxop',
-            data={
+            params={
                 'sessionID': self.session_id,
                 'op': 'get_sms_code',
                 'input': sms_code,

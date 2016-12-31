@@ -2,6 +2,7 @@ import json
 import os
 import re
 import logging
+import warnings
 from base64 import b64encode
 from binascii import hexlify
 
@@ -100,11 +101,18 @@ class SessionBase(object):
 
         return ret2
 
-    async def _request(self, module, url, data=None,
+    async def _request(self, module, url, params=None, data=None,
                        is_post=True, is_json=False, is_ajax=False,
                        referer=None, timeout=120, headers=None):
+
+        if not is_post and data is not None:
+            warnings.warn("Using 'data' on GET request ({}) is deprecated, please use 'params'".format(url), UserWarning)
+            data = params
+
         if data is None:
             data = {}
+        if params is None:
+            params = {}
         if timeout is None:
             timeout = 600
 
@@ -118,7 +126,7 @@ class SessionBase(object):
 
         with aiohttp.Timeout(timeout):  # TODO: rewrite timeout to new structure
             if is_post:
-                r = await module.post(url, data=data, headers=headers_param)
+                r = await module.post(url, params=params, data=data, headers=headers_param)
                 if is_json:
                     ret = await r.json()
                 else:
@@ -127,7 +135,7 @@ class SessionBase(object):
                 if self._session != module:  # fixme
                     module.close()
             else:
-                r = await module.get(url, params=data, headers=headers_param)
+                r = await module.get(url, params=params, headers=headers_param)
                 if is_json:
                     ret = await r.json()
                 else:
@@ -137,61 +145,61 @@ class SessionBase(object):
                     module.close()
         return ret
 
-    async def check_is_expire(self, *, url, data, is_post, is_json, return_=None, raise_=None):
+    async def check_is_expire(self, *, url, params, data, is_post, is_json, return_=None, raise_=None):
         if self.afunc_check_is_expire is None:
             return False
 
-        return await self.afunc_check_is_expire(url=url, data=data, is_post=is_post, is_json=is_json, return_=return_, raise_=raise_)
+        return await self.afunc_check_is_expire(url=url, params=params, data=data, is_post=is_post, is_json=is_json, return_=return_, raise_=raise_)
 
-    async def send_request(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        return await self._request(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+    async def send_request(self, *, url, params=None, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        return await self._request(aiohttp.ClientSession(), url, params, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    async def send_session(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None, check_when_expire=True):
+    async def send_session(self, *, url, params=None, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None, check_when_expire=True):
         is_expire = False
 
         try:
-            ret = await self._request(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+            ret = await self._request(self._session, url, params, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
             if check_when_expire:
-                is_expire = await self.check_is_expire(return_=ret, url=url, data=data, is_post=is_post, is_json=is_json)
+                is_expire = await self.check_is_expire(return_=ret, url=url, params=params, data=data, is_post=is_post, is_json=is_json)
 
             if not is_expire:
                 return ret
 
         except Exception as e:
             if check_when_expire:
-                is_expire = await self.check_is_expire(raise_=e, url=url, data=data, is_post=is_post, is_json=is_json)
+                is_expire = await self.check_is_expire(raise_=e, url=url, params=params, data=data, is_post=is_post, is_json=is_json)
 
             if not is_expire:
                 raise
 
-        return await self._request(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+        return await self._request(self._session, url, params, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
     @request_as_mobile
     async def _request_mobile(self, *args, **kwargs):
         return await self._request(*args, **kwargs)
 
-    async def send_mobile_request(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
-        return await self._request_mobile(aiohttp.ClientSession(), url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+    async def send_mobile_request(self, *, url, params=None, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None):
+        return await self._request_mobile(aiohttp.ClientSession(), url, params, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
-    async def send_mobile_session(self, *, url, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None, check_when_expire=True):
+    async def send_mobile_session(self, *, url, params=None, data=None, is_post=True, is_json=False, is_ajax=False, referer=None, timeout=120, headers=None, check_when_expire=True):
         is_expire = False
 
         try:
-            ret = await self._request_mobile(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+            ret = await self._request_mobile(self._session, url, params, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
             if check_when_expire:
-                is_expire = await self.check_is_expire(return_=ret, url=url, data=data, is_post=is_post, is_json=is_json)
+                is_expire = await self.check_is_expire(return_=ret, url=url, params=params, data=data, is_post=is_post, is_json=is_json)
 
             if not is_expire:
                 return ret
 
         except Exception as e:
             if check_when_expire:
-                is_expire = await self.check_is_expire(raise_=e, url=url, data=data, is_post=is_post, is_json=is_json)
+                is_expire = await self.check_is_expire(raise_=e, url=url, params=params, data=data, is_post=is_post, is_json=is_json)
 
             if not is_expire:
                 raise
 
-        return await self._request_mobile(self._session, url, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
+        return await self._request_mobile(self._session, url, params, data, is_post, is_json, is_ajax, referer, timeout, headers=headers)
 
 
 class ConfigBase(object):
@@ -274,7 +282,7 @@ class SteamWebBase(object):
         # if init_auth_guardian:
         #     self.session.set_cookies(init_auth_guardian)
 
-    async def check_session_expire(self, *, url, data, is_post, is_json, return_=None, raise_=None):
+    async def check_session_expire(self, *, url, params, data, is_post, is_json, return_=None, raise_=None):
         is_relogin = False
         if raise_:
             if str(raise_) == 'Can redirect only to http or https: steammobile':

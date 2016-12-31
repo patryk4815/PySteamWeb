@@ -114,8 +114,13 @@ class SteamChat(SteamWebBase):
         data.update({'access_token': self.access_token, 'umqid': self.umq_id})
         try:
             return await self.session.send_request(
-                url, data,
-                is_post=True, is_json=True, is_ajax=False, referer=None, timeout=timeout
+                url=url,
+                data=data,
+                is_post=True,
+                is_json=True,
+                is_ajax=False,
+                referer=None,
+                timeout=timeout
             )
         except asyncio.TimeoutError:
             return {'error': 'Timeout'}
@@ -126,23 +131,23 @@ class SteamChat(SteamWebBase):
 
         if friend_data.get('m_bInGame', False):
             if friend_data.get('m_nInGameAppID', False):
-                return 'W grze - ' + friend_data.get('m_strInGameName')
+                return 'In game - ' + friend_data.get('m_strInGameName')
             else:
-                return 'W grze spoza Steam - ' + friend_data.get('m_strInGameName')
+                return 'In non-Steam game - ' + friend_data.get('m_strInGameName')
         else:
             if status == 0:
                 return 'Offline'
             elif status == 1:
                 return 'Online'
             elif status == 4:
-                return 'Drzemka'
+                return 'Snooze'
             elif status == 3:
-                return 'Zaraz wracam'
+                return 'Away'
             elif status == 2:
-                return 'Zajęty'
+                return 'Busy'
             elif status == 5:
-                return 'Chcę się wymienić'
+                return 'Looking to trade'
             elif status == 6:
-                return 'Chcę pograć'
+                return 'Looing to play'
             else:
-                return 'offline'
+                return 'Offline'

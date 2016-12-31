@@ -76,10 +76,11 @@ class SteamTrade(SteamWebBase):
         logging.debug('post check_user_trade_url, parsed: {}, {}'.format(token, partner))
         try:
             response = await self.session.send_session(
-                url='https://steamcommunity.com/tradeoffer/new/?partner={}&token={}'.format(
-                    partner,
-                    token,
-                ),
+                url='https://steamcommunity.com/tradeoffer/new/',
+                params={
+                    'partner': partner,
+                    'token': token,
+                },
                 is_post=False,
                 timeout=10,
             )
@@ -357,9 +358,9 @@ class SteamTrade(SteamWebBase):
 
         return await self.session.send_request(
             url='https://api.steampowered.com/IEconService/GetTradeOffers/v1/',
+            params=context,
             is_post=False,
             is_json=True,
-            data=context,
             timeout=timeout,
         )
 
@@ -372,9 +373,9 @@ class SteamTrade(SteamWebBase):
 
         return await self.session.send_request(
             url='https://api.steampowered.com/IEconService/GetTradeOffer/v1/',
+            params=context,
             is_post=False,
             is_json=True,
-            data=context,
             timeout=timeout,
         )
 
