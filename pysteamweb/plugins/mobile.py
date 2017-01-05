@@ -76,14 +76,13 @@ class _SteamMobileConfirmation(SteamWebBase):
 
         return b64encode(hmac.new(b64decode(secret), bytes(buffer), sha1).digest()).decode()
 
-    async def get_confirmations(self, timeout=None):
-        data = await self.session.send_session(
-            url='https://steamcommunity.com/mobileconf/conf',
-            params=self._get_confirmation_query('conf'),
-            is_post=False,
+    async def get_confirmations(self, timeout=None, hash_time=None):
+        data = await self._send_confirmation(
+            'conf',
+            'conf',
             is_json=False,
-            is_ajax=False,
             timeout=timeout,
+            hash_time=hash_time,
         )
         soup = BeautifulSoup(data)
 
@@ -111,7 +110,7 @@ class _SteamMobileConfirmation(SteamWebBase):
             'tag': tag,
         }
 
-    async def _send_confirmation(self, url, operation_tag, params=None, timeout=None, hash_time=None):
+    async def _send_confirmation(self, url, operation_tag, params=None, is_post=False, is_json=True, timeout=None, hash_time=None):
         if params is None:
             params = {}
         params.update(self._get_confirmation_query(operation_tag, hash_time=hash_time))
@@ -119,8 +118,8 @@ class _SteamMobileConfirmation(SteamWebBase):
         return await self.session.send_session(
             url='https://steamcommunity.com/mobileconf/' + url,
             params=params,
-            is_post=False,
-            is_json=True,
+            is_post=is_post,
+            is_json=is_json,
             is_ajax=False,
             timeout=timeout,
         )
