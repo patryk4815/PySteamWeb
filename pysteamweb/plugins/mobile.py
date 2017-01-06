@@ -19,16 +19,22 @@ class _SteamMobileConfirmation(SteamWebBase):
     def reload_two_factor_config(self):
         self._two_factor = self.config.load_config('2fa', default=dict())
         self._device_id = self.config.load_config('device', default={
-            'device_id': self.generate_device_id(),
+            'device_id': None,
         }).get('device_id')
 
     def generate_device_id(self):
+        if self.steam_id is None:
+            raise RuntimeError('SteamID is not available at this moment!')
+
         hash_o = sha1()
         hash_o.update(str(self.steam_id).encode())
         return 'android:{}'.format(hash_o.hexdigest())
 
     @property
     def device_id(self):
+        if not self._device_id:
+            self._device_id = self.generate_device_id()
+
         return self._device_id
 
     @property
