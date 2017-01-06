@@ -3,6 +3,8 @@ import time
 import hmac
 from base64 import b64decode, b64encode
 from hashlib import sha1
+
+import re
 from bs4 import BeautifulSoup
 
 from .. import SteamWebBase
@@ -26,9 +28,10 @@ class _SteamMobileConfirmation(SteamWebBase):
         if self.steam_id is None:
             raise RuntimeError('SteamID is not available at this moment!')
 
-        hash_o = sha1()
-        hash_o.update(str(self.steam_id).encode())
-        return 'android:{}'.format(hash_o.hexdigest())
+        encoded = sha1(str(self.steam_id.as_64()).encode()).hexdigest()
+        return 'android:{}'.format(
+            re.sub(r'^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12}).*$', r'\1-\2-\3-\4-\5', encoded)
+        )
 
     @property
     def device_id(self):
