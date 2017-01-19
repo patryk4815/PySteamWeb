@@ -299,12 +299,12 @@ class SteamWebBase(object):
                         is_post=False,
                         is_json=True,
                         is_ajax=True,
-                        timeout=4,
+                        timeout=60,
                         check_when_expire=False
                     )
                 except asyncio.TimeoutError:
                     logging.warning('on_interval_check_session, timeout')
-                    await asyncio.sleep(60)  # 1 min
+                    await asyncio.sleep(120)  # 1 min
                     continue
 
                 if data is not None:
