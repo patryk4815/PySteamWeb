@@ -294,7 +294,7 @@ class SteamWebBase(object):
             try:
                 try:
                     # if this return None, then there is no session
-                    data = self.session.send_session(
+                    data = await self.session.send_session(
                         url='http://steamcommunity.com/actions/GetNotificationCounts',
                         is_post=False,
                         is_json=True,
@@ -307,16 +307,16 @@ class SteamWebBase(object):
                     await asyncio.sleep(120)  # 1 min
                     continue
 
-                if data is not None:
-                    logging.info('on_interval_check_session, session OK')
-                    await asyncio.sleep(60)  # 1 min
+                if data is None:
+                    logging.info('on_interval_check_session, session EXPIRE')
+                    await self.reconnect()
+                    await asyncio.sleep(300)  # 5 min
                     continue
+                
+                logging.info('on_interval_check_session, session OK')
+                await asyncio.sleep(60)  # 1 min
 
-                logging.info('on_interval_check_session, session EXPIRE')
-                await self.reconnect()
-                await asyncio.sleep(300)  # 5 min
-
-            except asyncio.TimeoutError:
+            except Exception as e:
                 logging.warning('on_interval_check_session, exception: {}'.format(traceback.format_exc()))
                 await asyncio.sleep(180)  # 3 min
 
