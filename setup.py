@@ -13,7 +13,7 @@ setup(
     platforms='Posix; MacOS X; Windows',
     install_requires=[
         'pycrypto>=2.6',
-        'aiohttp==1.1.6',
+        'aiohttp==3.8.5',
         'beautifulsoup4>=4.4',
     ]
 )
