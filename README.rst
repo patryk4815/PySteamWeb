@@ -1,3 +1,5 @@
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fpatryk4815%2FPySteamWeb.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fpatryk4815%2FPySteamWeb?ref=badge_shield)
+
 Requirements
 ============
 
@@ -37,3 +39,6 @@ Demos
 =====
 
 Look at demo folder
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fpatryk4815%2FPySteamWeb.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fpatryk4815%2FPySteamWeb?ref=badge_large)
